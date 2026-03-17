@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yan&Him 我想和你有所事事</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://gs.jurieo.com/gemini/gstatic/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from "https://gs.jurieo.com/gemini/gstatic/firebasejs/10.7.1/firebase-firestore.js";
+
+        // 你的 Firebase 配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyDlCv_XVkP62y9rJ3Lsd6-L3b8nnc4cijU",
+            authDomain: "yanhim-5ba01.firebaseapp.com",
+            projectId: "yanhim-5ba01",
+            storageBucket: "yanhim-5ba01.firebasestorage.app",
+            messagingSenderId: "602797494035",
+            appId: "1:602797494035:web:d1a7f11e8610e4b25f94e6",
+            measurementId: "G-7T7M2FW0FJ"
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const docRef = doc(db, "appData", "sharedState");
+
+        // 全域狀態
+        window.state = {
+            wishes: [],
+            fishItems: [],
+            matchaItems: [],
+            nextTripDate: '2026-06-01',
+            currentSpecialTab: 'fish'
+        };
+
+        // --- 核心：雲端數據監聽 ---
+        // 當資料庫有變動時，兩個人的手機都會自動更新介面
+        onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                window.state = docSnap.data();
+                renderAll();
+            } else {
+                // 如果是第一次使用，初始化雲端資料庫
+                setDoc(docRef, window.state);
+            }
+        });
+
+        // 儲存到雲端
+        window.syncToCloud = async () => {
+            await setDoc(docRef, window.state);
+        };
+
+        // 頁面初次渲染
+        window.addEventListener('load', () => {
+            renderAll();
+            lucide.createIcons();
+        });
+    </script>
+
+    <style>
+        @import url('https://gs.jurieo.com/gemini/fonts-googleapis/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500&display=swap');
+        :root { --sakura-pink: #fce4ec; --matcha-green: #81a56d; --rice-paper: #f9f7f2; }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: var(--rice-paper); color: #4a4a4a; padding-bottom: 90px; }
+        .title-font { font-family: 'Noto Serif TC', serif; }
+        .glass-nav { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); border-top: 1px solid rgba(129, 165, 109, 0.1); }
+        .tier-s { background-color: #ff7eb9; color: white; }
+        .tier-a { background-color: #ffb3ba; color: white; }
+        .tier-b { background-color: #ffdfba; color: #5a5a5a; }
+        .tier-c { background-color: #ffffba; color: #5a5a5a; }
+        .tier-f { background-color: #baffc9; color: #5a5a5a; }
+        .custom-shadow { box-shadow: 0 8px 20px rgba(129, 165, 109, 0.08); }
+        .tab-active { color: var(--matcha-green); border-bottom: 3px solid var(--matcha-green); }
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <section id="page-home" class="page">
+            <div class="relative h-[40vh] w-full overflow-hidden">
+                <img src="cover.jpg" alt="Yan&Him" class="w-full h-full object-cover" onerror="this.src='https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?auto=format&fit=crop&q=80&w=1000'">
+                <div class="absolute bottom-6 left-0 w-full px-6">
+                    <h1 class="title-font text-3xl font-bold text-[#4a4a4a]">Yan&Him</h1>
+                    <p class="title-font text-lg text-[#81a56d] mt-1">我想和你有所事事</p>
+                </div>
+            </div>
+
+            <div class="px-6 space-y-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-white p-4 rounded-3xl custom-shadow text-center">
+                        <p class="text-[10px] text-gray-400 mb-1">NEXT TRIP</p>
+                        <div id="countdown" class="text-xl font-bold text-[#81a56d]">-- Days</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-3xl custom-shadow text-center">
+                        <p class="text-[10px] text-gray-400 mb-1">DONE</p>
+                        <div id="completion-rate" class="text-xl font-bold text-[#ffb3ba]">0%</div>
+                    </div>
+                </div>
+                <div id="recent-wishes" class="space-y-2"></div>
+            </div>
+        </section>
+
+        <section id="page-list" class="page hidden p-6">
+            <div class="flex justify-between items-end mb-6">
+                <h2 class="text-2xl font-bold title-font">願望清單</h2>
+                <button onclick="toggleModal('wish-modal')" class="bg-[#ffb3ba] text-white w-12 h-12 rounded-2xl shadow-lg flex items-center justify-center">
+                    <i data-lucide="plus"></i>
+                </button>
+            </div>
+            <div id="wish-items" class="space-y-3"></div>
+        </section>
+
+        <section id="page-special" class="page hidden p-6">
+            <div class="flex space-x-6 mb-6">
+                <button id="btn-fish" onclick="switchTab('fish')" class="text-2xl font-bold title-font">🐟 魚魚</button>
+                <button id="btn-matcha" onclick="switchTab('matcha')" class="text-2xl font-bold title-font">🍵 抹茶</button>
+            </div>
+            <button onclick="openSpecialModal()" class="w-full py-4 mb-6 bg-white border-2 border-dashed border-[#81a56d]/30 rounded-3xl text-gray-400 flex justify-center items-center text-sm">
+                <i data-lucide="plus-circle" class="mr-2 w-4 h-4"></i> 新增食評
+            </button>
+            <div id="tier-list-container" class="space-y-3">
+                </div>
+        </section>
+    </div>
+
+    <nav class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] glass-nav h-16 rounded-3xl flex justify-around items-center px-4 z-50 shadow-xl border border-white/50">
+        <button onclick="showPage('home')" class="nav-btn flex flex-col items-center text-[#81a56d]" data-id="home"><i data-lucide="home"></i></button>
+        <button onclick="showPage('list')" class="nav-btn flex flex-col items-center text-gray-300" data-id="list"><i data-lucide="heart"></i></button>
+        <button onclick="showPage('special')" class="nav-btn flex flex-col items-center text-gray-300" data-id="special"><i data-lucide="utensils"></i></button>
+    </nav>
+
+    <div id="wish-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden z-[60] flex items-center justify-center p-8">
+        <div class="bg-white w-full rounded-[2rem] p-6 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">新的願望</h3>
+            <input id="wish-input" type="text" placeholder="想一起做什麼？" class="w-full p-4 bg-gray-50 rounded-2xl mb-4 border-none">
+            <button onclick="addWish()" class="w-full py-4 bg-[#ffb3ba] text-white rounded-2xl font-bold">收藏願望</button>
+            <button onclick="toggleModal('wish-modal')" class="w-full py-2 mt-2 text-gray-400 text-sm">取消</button>
+        </div>
+    </div>
+
+    <script>
+        // 介面控制
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+            document.getElementById('page-' + pageId).classList.remove('hidden');
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.style.color = btn.dataset.id === pageId ? '#81a56d' : '#d1d5db');
+        }
+
+        function toggleModal(id) {
+            document.getElementById(id).classList.toggle('hidden');
+        }
+
+        // 願望管理
+        async function addWish() {
+            const input = document.getElementById('wish-input');
+            if (!input.value) return;
+            window.state.wishes.unshift({ id: Date.now(), text: input.value, completed: false });
+            input.value = '';
+            toggleModal('wish-modal');
+            await window.syncToCloud();
+        }
+
+        async function toggleWish(id) {
+            const wish = window.state.wishes.find(w => w.id === id);
+            wish.completed = !wish.completed;
+            await window.syncToCloud();
+        }
+
+        // 食評管理
+        function switchTab(type) {
+            window.state.currentSpecialTab = type;
+            renderSpecial();
+        }
+
+        async function addSpecialItem() {
+            // 此處簡化處理，實際建議使用 Modal 輸入
+            const name = prompt("店名/產品名:");
+            const tier = prompt("Tier (S/A/B/C/F):").toUpperCase();
+            if (!name || !tier) return;
+            const list = window.state.currentSpecialTab === 'fish' ? window.state.fishItems : window.state.matchaItems;
+            list.push({ name, tier });
+            await window.syncToCloud();
+        }
+
+        window.openSpecialModal = addSpecialItem;
+
+        // 渲染邏輯
+        function renderAll() {
+            // Home
+            const diff = Math.ceil((new Date(window.state.nextTripDate) - new Date()) / (1000 * 60 * 60 * 24));
+            document.getElementById('countdown').innerText = diff > 0 ? `${diff} Days` : 'Trip!';
+            const done = window.state.wishes.filter(w => w.completed).length;
+            const rate = window.state.wishes.length === 0 ? 0 : Math.round((done / window.state.wishes.length) * 100);
+            document.getElementById('completion-rate').innerText = `${rate}%`;
+
+            document.getElementById('recent-wishes').innerHTML = window.state.wishes.slice(0, 3).map(w => `
+                <div class="bg-white p-3 rounded-2xl shadow-sm text-xs font-medium">${w.text}</div>
+            `).join('');
+
+            // Wishes
+            document.getElementById('wish-items').innerHTML = window.state.wishes.map(w => `
+                <div onclick="toggleWish(${w.id})" class="bg-white p-5 rounded-3xl flex items-center space-x-4 shadow-sm border border-gray-50 ${w.completed ? 'opacity-40' : ''}">
+                    <div class="w-6 h-6 rounded-full border-2 border-[#ffb3ba] flex items-center justify-center">
+                        ${w.completed ? '<div class="w-3 h-3 bg-[#ffb3ba] rounded-full"></div>' : ''}
+                    </div>
+                    <p class="font-bold ${w.completed ? 'line-through' : ''}">${w.text}</p>
+                </div>
+            `).join('');
+
+            renderSpecial();
+        }
+
+        function renderSpecial() {
+            const list = window.state.currentSpecialTab === 'fish' ? window.state.fishItems : window.state.matchaItems;
+            const container = document.getElementById('tier-list-container');
+            const tiers = ['S', 'A', 'B', 'C', 'F'];
+            
+            container.innerHTML = tiers.map(t => `
+                <div class="flex rounded-2xl overflow-hidden bg-white shadow-sm">
+                    <div class="tier-${t.toLowerCase()} w-12 flex items-center justify-center font-bold">${t === 'F' ? '狗' : t}</div>
+                    <div class="p-3 flex flex-wrap gap-2 flex-1 min-h-[50px]">
+                        ${list.filter(i => i.tier === t).map(i => `<span class="bg-gray-50 px-3 py-1 rounded-xl text-xs">${i.name}</span>`).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
